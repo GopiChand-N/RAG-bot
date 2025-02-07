@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chatbot UI</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='styles.css') }}"
+    />
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        background-color: #f4f4f9;
+      }
+
+      .chat-container {
+        width: 400px;
+        height: 600px;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid #ccc;
+        border-radius: 10px;
+        background-color: #ffffff;
+        overflow: hidden;
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+      }
+
+      .chat-window {
+        flex: 1;
+        padding: 10px;
+        overflow-y: auto;
+        border-bottom: 1px solid #ccc;
+      }
+
+      .message {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 10px;
+      }
+
+      .user-message {
+        background-color: #d1f7c4;
+        text-align: right;
+        align-self: flex-end;
+      }
+
+      .bot-message {
+        background-color: #f1f1f1;
+        text-align: left;
+        align-self: flex-start;
+      }
+
+      .input-container {
+        display: flex;
+        padding: 10px;
+        border-top: 1px solid #ccc;
+      }
+
+      #user-input {
+        flex: 1;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        margin-right: 10px;
+        font-size: 16px;
+      }
+
+      #send-button {
+        padding: 10px 20px;
+        border: none;
+        background-color: #007bff;
+        color: white;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+      }
+
+      #send-button:hover {
+        background-color: #0056b3;
+      }
+
+      .user-message {
+        text-align: right;
+        background-color: #109919;
+        color: white;
+        padding: 10px;
+        margin: 5px;
+        border-radius: 8px;
+      }
+
+      .bot-message {
+        text-align: left;
+        background-color: #e8eaf6;
+        padding: 10px;
+        margin: 5px;
+        border-radius: 8px;
+      }
+
+      a {
+        color: blue;
+        text-decoration: underline;
+        cursor: pointer;
+      }
+
+      a:hover {
+        color: darkblue;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="chat-container">
+      <div id="chat-window" class="chat-window"></div>
+      <div class="input-container">
+        <input
+          id="user-input"
+          type="text"
+          placeholder="Type your message here..."
+        />
+        <button id="send-button">Send</button>
+      </div>
+    </div>
+    <script>
+      document
+        .getElementById("send-button")
+        .addEventListener("click", sendMessage);
+
+      document
+        .getElementById("user-input")
+        .addEventListener("keypress", function (e) {
+          if (e.key === "Enter") {
+            sendMessage();
+          }
+        });
+
+      function sendMessage() {
+        const userInput = document.getElementById("user-input").value;
+        if (!userInput.trim()) return;
+
+        // Display the user's message
+        addMessage(userInput, "user-message");
+
+        // Send the message to the server
+        fetch("http://18.234.161.171/chatbot", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            query: userInput,
+            metadata: {
+              organization_name: "Infojini",
+            },
+          }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.response) {
+              addMessage(formatBotMessage(data.response), "bot-message");
+            } else {
+              addMessage("No response received.", "bot-message");
+            }
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            addMessage("An error occurred. Please try again.", "bot-message");
+          });
+
+        // Clear the input field
+        document.getElementById("user-input").value = "";
+      }
+
+      function addMessage(content, className) {
+        const chatWindow = document.getElementById("chat-window");
+        const messageDiv = document.createElement("div");
+        messageDiv.classList.add("message", className);
+
+        // Render formatted content for bot messages
+        if (className === "bot-message") {
+          messageDiv.innerHTML = content;
+        } else {
+          messageDiv.textContent = content; // Plain text for user messages
+        }
+
+        chatWindow.appendChild(messageDiv);
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+      }
+
+      function formatBotMessage(message) {
+        // Convert markdown-like syntax to HTML
+        message = message
+          .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") // Bold
+          .replace(/\n/g, "<br>"); // Newlines
+
+        // Format ordered lists (numbers)
+        message = message.replace(
+          /^(\d+)\.\s(.*?)(?=\n|$)/gm,
+          (match, p1, p2) => `<li>${p2}</li>`
+        );
+        if (message.includes("<li>")) {
+          message = `<ol>${message}</ol>`;
+        }
+
+        // Format unordered lists (dashes or bullets)
+        message = message.replace(
+          /^- (.*?)(?=\n|$)/gm,
+          (match, p1) => `<li>${p1}</li>`
+        );
+        if (message.includes("<li>") && !message.includes("<ol>")) {
+          message = `<ul>${message}</ul>`;
+        }
+
+        // Format links
+        message = formatMessageWithLinks(message);
+
+        return message;
+      }
+
+      function formatMessageWithLinks(message) {
+        const urlRegex =
+          /(?:https?:\/\/)?(?:www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s]*\.pdf)?/g;
+        return message.replace(urlRegex, (url) => {
+          let clickableUrl = url.match(/.*?\.pdf/)[0]; // Trim after .pdf
+          if (
+            !clickableUrl.startsWith("http://") &&
+            !clickableUrl.startsWith("https://")
+          ) {
+            clickableUrl = `http://${clickableUrl}`;
+          }
+          return `<a href="${clickableUrl}" target="_blank">${clickableUrl}</a>`;
+        });
+      }
+    </script>
+  </body>
+</html>
